@@ -46,6 +46,8 @@ namespace AV.FinTS.Models
             }
         }
 
+        private SepaAccount() { }
+
         bool IMultiValue.CanBeConvertedTo(Type type)
         {
             if(type == typeof(AccountLegacy) || type == typeof(Account)) return NationalSet;
@@ -118,6 +120,23 @@ namespace AV.FinTS.Models
             }
 
             throw new NotImplementedException();
+        }
+
+        internal SepaAccount Clone()
+        {
+            return new SepaAccount
+            {
+                Iban = Iban,
+                Bic = Bic,
+                AccountNumber = AccountNumber,
+                SubAccountNumber = SubAccountNumber,
+                Blz = Blz,
+                cc = cc,
+                AccountHolder = AccountHolder,
+                AccountProductName = AccountProductName,
+                Currency = Currency,
+                NationalSet = NationalSet,
+            };
         }
     }
 }

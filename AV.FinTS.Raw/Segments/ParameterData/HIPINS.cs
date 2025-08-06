@@ -7,15 +7,9 @@ using System.Threading.Tasks;
 
 namespace AV.FinTS.Raw.Segments.ParameterData
 {
-    public class HIPINS1 : ISegment
+    public class HIPINS1 : ParameterSegment
     {
-        public SegmentId Head { get; private set; } = new SegmentId { Name = "HIPINS", Version = 1 };
-
-        public int MaxOrders { get; set; }
-
-        public int MinSignatures { get; set; }
-
-        public int SecurityClass { get; set; }
+        public override SegmentId Head { get; protected set; } = new SegmentId { Name = "HIPINS", Version = 1 };
 
         public int? MinPinLength { get; set; }
 
@@ -34,10 +28,8 @@ namespace AV.FinTS.Raw.Segments.ParameterData
             var param = new HIPINS1
             {
                 Head = segmentId,
-                MaxOrders = (int)reader.ReadInt()!,
-                MinSignatures = (int)reader.ReadInt()!,
-                SecurityClass = (int)reader.ReadInt()!,
             };
+            param.Read(reader);
             reader.EnterGroup();
             param.MinPinLength = reader.ReadInt();
             param.MaxPinLength = reader.ReadInt();
@@ -58,11 +50,6 @@ namespace AV.FinTS.Raw.Segments.ParameterData
             reader.LeaveGroup();
 
             return param;
-        }
-
-        public void Write(MessageWriter writer)
-        {
-            throw new NotImplementedException();
         }
     }
 }
