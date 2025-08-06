@@ -1,0 +1,30 @@
+name: Build and Pack
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0 # avoid shallow clone so nbgv can do its work.
+    - uses: dotnet/nbgv@v0.4
+      id: nbgv
+    - name: Build
+      run: dotnet build -c Release /p:ContinuousIntegrationBuild=true
+    - name: Pack
+      run: dotnet pack -c Release --no-build /p:ContinuousIntegrationBuild=true
+    - name: Test
+      run: dotnet test -c Release --no-restore --no-build /p:ContinuousIntegrationBuild=true
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: AV.FinTS-nupkg-${{ steps.nbgv.outputs.SemVer2 }}
+        path: |
+          bin/Packages/Release/**/*
