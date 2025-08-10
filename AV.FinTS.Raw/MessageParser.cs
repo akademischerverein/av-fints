@@ -24,6 +24,12 @@ namespace AV.FinTS.Raw
             if (_segmentsLoaded) return;
 
             RegisterType(typeof(HIBPA3));
+            RegisterType(typeof(HIEKA3));
+            RegisterType(typeof(HIEKA4));
+            RegisterType(typeof(HIEKA5));
+            RegisterType(typeof(HIEKAS3));
+            RegisterType(typeof(HIEKAS4));
+            RegisterType(typeof(HIEKAS5));
             RegisterType(typeof(HIKAZ4));
             RegisterType(typeof(HIKAZ5));
             RegisterType(typeof(HIKAZ6));

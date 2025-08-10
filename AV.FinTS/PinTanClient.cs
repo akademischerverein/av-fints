@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -371,13 +372,82 @@ namespace AV.FinTS
             return retSeg;
         }
 
+        private bool IsAccountSpecific(string segName)
+        {
+            switch(segName)
+            {
+                case "HKKAZ":
+                case "HKSAL":
+                case "HKEKA":
+                case "HKKAU":
+                case "HKKIF":
+                case "NULL":
+                    return true;
+            }
+
+            return false;
+        }
+
+        private async Task<RawMessage> Send(Dialog dialog, List<ISegment> segments, SepaAccount? account=null)
+        {
+            if(!segments.All(seg => _bpd.PinTanInfo.ContainsKey(seg.Head.Name)))
+            {
+                await dialog.End([]);
+                throw new OperationNotSupported();
+            }
+
+            var accountlessSegments = segments.Where(seg => !IsAccountSpecific(seg.Head.Name)).Select(seg => seg.Head.Name).ToList();
+            var accountSegments = segments.Where(seg => IsAccountSpecific(seg.Head.Name)).Select(seg  => seg.Head.Name).ToList();
+
+            var tanRequired = _bpd.PinTanInfo.Where(kv => accountlessSegments.Contains(kv.Key)).Any(kv => kv.Value);
+
+            var upd = (HIUPD6?)null;
+            if (account != null)
+            {
+                upd = _upd.GetForAccount(account);
+                if (upd == null)
+                {
+                    await dialog.End([]);
+                    throw new OperationNotSupported();
+                }
+
+                var ops = upd.AllowedOperations.Where(op => accountSegments.Contains(op.Operation)).ToList();
+                if (ops.Any(op => op.NumRequiredSignatures > 1) || accountSegments.Distinct().Count() != ops.Count)
+                {
+                    await dialog.End([]);
+                    throw new OperationNotSupported();
+                }
+
+                tanRequired = tanRequired || ops.Any(op => op.NumRequiredSignatures == 1);
+            } else if(accountSegments.Count() > 0)
+            {
+                await dialog.End([]);
+                throw new ArgumentNullException(nameof(accountSegments));
+            }
+
+            RawMessage respMessage;
+            if (tanRequired)
+            {
+                respMessage = await dialog.SendMessage([..segments, GenTanRequest()]);
+                respMessage = await ProcessTanResponse(dialog, respMessage);
+            }
+            else
+            {
+                respMessage = await dialog.SendMessage(segments);
+            }
+
+            var errors = respMessage.GetAll<HIRMG2>().SelectMany(seg => seg.Feedbacks).Concat(respMessage.GetAll<HIRMS2>().SelectMany(seg => seg.Feedbacks)).Where(fb => fb.Code >= 9000);
+            if (errors.Count() > 0)
+            {
+                throw new FinTSAuthException("Bank responded with errors", errors.ToList());
+            }
+
+            return respMessage;
+        }
+
         public async Task<TanMediumResponse> GetTanMedia(TanMediumType type = TanMediumType.All, TanMediumClass mediumClass = TanMediumClass.ALL)
         {
             var best = _bpd.GetBestParameterRequired(typeof(HITABS4));
-            if (!_bpd.PinTanInfo.ContainsKey("HKTAB"))
-            {
-                throw new OperationNotSupported();
-            }
             var seg = CreateSegment(best.Head, new
             {
                 Type = type,
@@ -393,19 +463,11 @@ namespace AV.FinTS
                 diag = await OpenDialog();
             }
 
-            RawMessage respMessage;
-            if (_bpd.PinTanInfo["HKTAB"])
-            {
-                respMessage = await diag.SendMessage([seg, GenTanRequest(SelectedAuthenticationMethod)]);
-                respMessage = await ProcessTanResponse(diag, respMessage);
-            } else
-            {
-                respMessage = await diag.SendMessage([seg]);
-            }
+            var respMessage = await Send(diag, [seg]);
 
-            var hitan = respMessage.Get($"{seg.Head.Name[0]}I{seg.Head.Name.Substring(2)}", seg.Head.Version);
-            var media = hitan.GetPropertyNotNull<List<HITAB4.TanMediumElement>>("Media");
-            var usage = hitan.GetPropertyNotNull<TanUsageOption>("UsageOption");
+            var hiseg = respMessage.Get($"{seg.Head.Name[0]}I{seg.Head.Name.Substring(2)}", seg.Head.Version);
+            var media = hiseg.GetPropertyNotNull<List<HITAB4.TanMediumElement>>("Media");
+            var usage = hiseg.GetPropertyNotNull<TanUsageOption>("UsageOption");
 
             var resp = new TanMediumResponse
             {
@@ -431,10 +493,6 @@ namespace AV.FinTS
         public async Task<IReadOnlyCollection<SepaAccount>> GetAccounts()
         {
             var best = _bpd.GetBestParameterRequired(typeof(HISPAS2), typeof(HISPAS1));
-            if (!_bpd.PinTanInfo.ContainsKey("HKSPA"))
-            {
-                throw new OperationNotSupported();
-            }
 
             var seg = CreateSegment(best.Head, new
             {
@@ -442,18 +500,10 @@ namespace AV.FinTS
 
             var diag = await OpenDialog();
 
-            RawMessage respMessage;
-            if (_bpd.PinTanInfo["HKSPA"])
-            {
-                respMessage = await diag.SendMessage([seg, GenTanRequest(SelectedAuthenticationMethod)]);
-                respMessage = await ProcessTanResponse(diag, respMessage);
-            } else
-            {
-                respMessage = await diag.SendMessage([seg]);
-            }
+            var respMessage = await Send(diag, [seg]);
 
-            var hitan = respMessage.Get($"{seg.Head.Name[0]}I{seg.Head.Name.Substring(2)}", seg.Head.Version);
-            var accounts = hitan.GetPropertyNotNull<List<AccountInternationalSepa>>("Accounts");
+            var hiseg = respMessage.Get($"{seg.Head.Name[0]}I{seg.Head.Name.Substring(2)}", seg.Head.Version);
+            var accounts = hiseg.GetPropertyNotNull<List<AccountInternationalSepa>>("Accounts");
 
             var sepa_accounts = new List<SepaAccount>();
             foreach(var acc in accounts)
@@ -498,11 +548,6 @@ namespace AV.FinTS
                 throw new ArgumentException("transactions are only stored for " + best.GetPropertyNotNull<int>("StorageDuration"));
             }
 
-            if (!_bpd.PinTanInfo.ContainsKey("HKKAZ"))
-            {
-                throw new OperationNotSupported();
-            }
-
             var seg = CreateSegment(best.Head, new
             {
                 AllAccounts = false,
@@ -513,29 +558,7 @@ namespace AV.FinTS
 
             var diag = await OpenDialog();
 
-            var upd = _upd.GetForAccount(account);
-            if (upd == null)
-            {
-                await diag.End([]);
-                throw new OperationNotSupported();
-            }
-            var op = upd.AllowedOperations.Where(op => op.Operation == "HKKAZ").FirstOrDefault();
-            if (op == null || op.NumRequiredSignatures > 1)
-            {
-                await diag.End([]);
-                throw new OperationNotSupported();
-            }
-
-            RawMessage respMessage;
-            if (_bpd.PinTanInfo["HKKAZ"] && op.NumRequiredSignatures == 1)
-            {
-                respMessage = await diag.SendMessage([seg, GenTanRequest()]);
-                respMessage = await ProcessTanResponse(diag, respMessage);
-            }
-            else
-            {
-                respMessage = await diag.SendMessage([seg]);
-            }
+            var respMessage = await Send(diag, [seg], account);
 
             await diag.End([]);
 
@@ -569,6 +592,45 @@ namespace AV.FinTS
                 response.BookedTransactions = ourStmt;
             }
             return response;
+        }
+
+        public async Task GetStatement(SepaAccount account, AccountStatementFormat? format=null, int? number=null, int? year=null)
+        {
+            ThrowIfNull(account, nameof(account));
+            var best = _bpd.GetBestParameterRequired(typeof(HIEKAS5), typeof(HIEKAS4), typeof(HIEKAS3));
+            var spas = _bpd.GetBestParameterRequired(typeof(HISPAS2), typeof(HISPAS1));
+
+            if ((number != null || year != 0) && !best.GetPropertyNotNull<bool>("NumberAllowed"))
+            {
+                throw new ArgumentException("number and year not allowed");
+            }
+            var acc_copy = account.Clone();
+
+            if (best.Head.Version > 3 && !spas.GetPropertyNotNull<bool>("NationalAccountNumberAllowed"))
+            {
+                acc_copy.NationalSet = false;
+            } else if (best.Head.Version < 4 && !acc_copy.NationalSet)
+            {
+                throw new ArgumentException("need to provide national account number", nameof(account));
+            }
+
+            if (format != null && !best.GetPropertyNotNull<List<AccountStatementFormat>>("SupportedFormats").Contains((AccountStatementFormat)format))
+            {
+                throw new ArgumentException("Format not supported by bank", nameof(format));
+            }
+
+            var seg = CreateSegment(best.Head, new
+            {
+                Account = account,
+                Format = format,
+                Number = number,
+                Year = year
+            }, typeof(HKEKA5), typeof(HKEKA4), typeof(HKEKA3));
+
+            var diag = await OpenDialog();
+            var respMessage = await Send(diag, [seg], account);
+
+            var hiseg = respMessage.Get("HIEKA");
         }
     }
 }

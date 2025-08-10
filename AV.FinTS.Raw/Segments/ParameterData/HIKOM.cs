@@ -22,7 +22,7 @@ namespace AV.FinTS.Raw.Segments.ParameterData
         {
             var kom = new HIKOM4
             {
-                Bank = BankIdentifier.Read(reader),
+                Bank = BankIdentifier.Read(reader)!,
                 DefaultLanguage = (Language)reader.ReadInt()!
             };
 

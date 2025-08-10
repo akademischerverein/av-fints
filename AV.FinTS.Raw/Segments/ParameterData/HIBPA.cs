@@ -30,7 +30,7 @@ namespace AV.FinTS.Raw.Segments.ParameterData
             {
                 Head = segmentId,
                 BpdVersion = (int)reader.ReadInt()!,
-                Bank = BankIdentifier.Read(reader),
+                Bank = BankIdentifier.Read(reader)!,
                 BankName = reader.Read()!,
                 MaxTransactionsPerMessage = (int)reader.ReadInt()!
             };

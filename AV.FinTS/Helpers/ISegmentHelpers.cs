@@ -1,4 +1,5 @@
 ﻿using AV.FinTS.Raw;
+using AV.FinTS.Raw.Structures;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -54,6 +55,21 @@ namespace AV.FinTS.Helpers
         {
             var ret = GetPropertyNotNull(seg, property);
             return (T)ret;
+        }
+
+        internal static string GetCustomerSegmentName(this SegmentId segmentId)
+        {
+            return $"{segmentId.Name[0]}K{segmentId.Name.Substring(2, 3)}";
+        }
+
+        internal static string GetBankSegmentName(this SegmentId segmentId)
+        {
+            return $"{segmentId.Name[0]}I{segmentId.Name.Substring(2, 3)}";
+        }
+
+        internal static string GetParameterSegmentName(this SegmentId segmentId)
+        {
+            return $"{segmentId.Name[0]}I{segmentId.Name.Substring(2, 3)}S";
         }
     }
 }

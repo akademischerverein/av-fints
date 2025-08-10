@@ -12,6 +12,11 @@ namespace AV.FinTS.Helper
 {
     public static class RawMessageHelpers
     {
+        public static ISegment Get(this RawMessage msg, string seg, uint idx = 0)
+        {
+            return msg.Segments.Where(s => s.Head.Name == seg).Skip((int)idx).First();
+        }
+
         public static ISegment Get(this RawMessage msg, string seg, int ver, uint idx = 0)
         {
             return msg.Segments.Where(s => s.Head.Name == seg && s.Head.Version == ver).Skip((int)idx).First();
@@ -27,6 +32,11 @@ namespace AV.FinTS.Helper
                 throw new InvalidCastException(typeof(T).Name + " != " + s.GetType().Name);
             }
             return (T)s;
+        }
+
+        public static IReadOnlyCollection<ISegment> GetAll(this RawMessage msg, string seg)
+        {
+            return msg.Segments.Where(s => s.Head.Name == seg).ToList();
         }
 
         public static IReadOnlyCollection<ISegment> GetAll(this RawMessage msg, string seg, int ver)

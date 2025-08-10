@@ -19,7 +19,7 @@ namespace AV.FinTS.Raw.Structures
             reader.EnterGroup();
             var keyName = new KeyName
             {
-                Bank = BankIdentifier.Read(reader),
+                Bank = BankIdentifier.Read(reader)!,
                 UserId = reader.Read()!
             };
             var key_type = reader.Read();
