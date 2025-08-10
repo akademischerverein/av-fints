@@ -9,7 +9,7 @@
         <LangVersion>12.0</LangVersion>
         <AnalysisLevel>latest</AnalysisLevel>
         <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
-        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <GenerateDocumentationFile>false</GenerateDocumentationFile>
 
         <!-- This entire repo has just one version.json file, so compute the version once and share with all projects in a large build. -->
         <GitVersionBaseDirectory>$(MSBuildThisFileDirectory)</GitVersionBaseDirectory>
