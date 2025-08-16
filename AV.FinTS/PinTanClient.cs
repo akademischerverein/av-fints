@@ -398,6 +398,7 @@ namespace AV.FinTS
 
             var accountlessSegments = segments.Where(seg => !IsAccountSpecific(seg.Head.Name)).Select(seg => seg.Head.Name).ToList();
             var accountSegments = segments.Where(seg => IsAccountSpecific(seg.Head.Name)).Select(seg  => seg.Head.Name).ToList();
+            var accountTanSegments = accountSegments.Where(seg => _bpd.PinTanInfo[seg]).ToList();
 
             var tanRequired = _bpd.PinTanInfo.Where(kv => accountlessSegments.Contains(kv.Key)).Any(kv => kv.Value);
 
@@ -411,8 +412,8 @@ namespace AV.FinTS
                     throw new OperationNotSupported();
                 }
 
-                var ops = upd.AllowedOperations.Where(op => accountSegments.Contains(op.Operation)).ToList();
-                if (ops.Any(op => op.NumRequiredSignatures > 1) || accountSegments.Distinct().Count() != ops.Count)
+                var ops = upd.AllowedOperations.Where(op => accountTanSegments.Contains(op.Operation)).ToList();
+                if (ops.Any(op => op.NumRequiredSignatures > 1) || accountTanSegments.Distinct().Count() != ops.Count)
                 {
                     await dialog.End([]);
                     throw new OperationNotSupported();
@@ -428,7 +429,12 @@ namespace AV.FinTS
             RawMessage respMessage;
             if (tanRequired)
             {
-                respMessage = await dialog.SendMessage([..segments, GenTanRequest()]);
+                respMessage = await dialog.SendMessage([..segments, GenTanRequest(segment: segments[0].Head.Name)]);
+                var interErrors = respMessage.GetAll<HIRMG2>().SelectMany(seg => seg.Feedbacks).Concat(respMessage.GetAll<HIRMS2>().SelectMany(seg => seg.Feedbacks)).Where(fb => fb.Code >= 9000);
+                if (interErrors.Count() > 0)
+                {
+                    throw new FinTSAuthException("Bank responded with errors", interErrors.ToList());
+                }
                 respMessage = await ProcessTanResponse(dialog, respMessage);
             }
             else
