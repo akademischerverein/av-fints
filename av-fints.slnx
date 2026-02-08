@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="AV.FinTS.Demo/AV.FinTS.Demo.csproj" />
+  <Project Path="AV.FinTS.Raw/AV.FinTS.Raw.csproj" />
+  <Project Path="AV.FinTS/AV.FinTS.csproj" />
+  <Project Path="FinTS.Demo.Wpf/FinTS.Demo.Wpf.csproj" />
+</Solution>
