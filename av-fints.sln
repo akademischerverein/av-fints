@@ -7,6 +7,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AV.FinTS.Raw", "AV.FinTS.Ra
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AV.FinTS", "AV.FinTS\AV.FinTS.csproj", "{427230F8-C77C-4A4A-A678-16ADC74C55E4}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AV.FinTS.Demo", "AV.FinTS.Demo\AV.FinTS.Demo.csproj", "{F7A75F7A-84D2-BA6D-BAFD-56148F5EB002}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FinTS.Demo.Wpf", "FinTS.Demo.Wpf\FinTS.Demo.Wpf.csproj", "{1253A778-ED29-D028-E9D2-99647FBFA41A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,6 +25,14 @@ Global
 		{427230F8-C77C-4A4A-A678-16ADC74C55E4}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{427230F8-C77C-4A4A-A678-16ADC74C55E4}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{427230F8-C77C-4A4A-A678-16ADC74C55E4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F7A75F7A-84D2-BA6D-BAFD-56148F5EB002}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F7A75F7A-84D2-BA6D-BAFD-56148F5EB002}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F7A75F7A-84D2-BA6D-BAFD-56148F5EB002}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F7A75F7A-84D2-BA6D-BAFD-56148F5EB002}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1253A778-ED29-D028-E9D2-99647FBFA41A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1253A778-ED29-D028-E9D2-99647FBFA41A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1253A778-ED29-D028-E9D2-99647FBFA41A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1253A778-ED29-D028-E9D2-99647FBFA41A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

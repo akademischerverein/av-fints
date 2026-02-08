@@ -31,14 +31,13 @@ namespace AV.FinTS
 {
     public class PinTanClient
     {
-        private Bpd _bpd;
         private char[] _pin = [];
         private readonly BankUserInfo _userInfo;
         private readonly string _endpoint;
         private readonly Func<AuthMethod, TanRequest, Task<TanResponse>> _authHandler;
         private Upd _upd = null!;
 
-        public PinTanClient(string endpoint, string bankId, Func<AuthMethod, TanRequest, Task<TanResponse>> authHandler, CountryCode cc = CountryCode.WEST_GERMANY)
+        public PinTanClient(string endpoint, string bankId, Func<AuthMethod, TanRequest, Task<TanResponse>> authHandler, CountryCode cc = CountryCode.WEST_GERMANY, FeedbackLogHandler? handler=null)
         {
             _endpoint = endpoint;
             _authHandler = authHandler;
@@ -48,14 +47,44 @@ namespace AV.FinTS
                 CountryCode = cc,
                 SelectedLanguage = Language.GERMAN
             };
+            if (handler != null)
+            {
+                FeedbackLog += handler;
+            }
 
             var anon = BankUserInfo.CreateAnonymous(bankId);
             var anonDialog = new Dialog(endpoint, anon);
             var resp = anonDialog.Init(0, 0, []);
 
             resp.Wait();
+            LogMessage(resp.Result).Wait();
+            Bpd = Bpd.FromMessage(resp.Result);
 
-            _bpd = Bpd.FromMessage(resp.Result);
+            var closeMsg = anonDialog.End([]);
+            closeMsg.Wait();
+            LogMessage(closeMsg.Result).Wait();
+        }
+
+        public delegate Task FeedbackLogHandler(object sender, FeedbackLogArgs args);
+
+        public event FeedbackLogHandler? FeedbackLog;
+
+        private async Task LogMessage(RawMessage msg)
+        {
+            if (FeedbackLog == null) return;
+
+            var feedbacks = msg.GetAll<HIRMG2>().Cast<ISegment>().Concat(msg.GetAll<HIRMS2>()).SelectMany(seg => seg.GetPropertyNotNull<List<Feedback>>("Feedbacks"));
+
+            foreach(var f in feedbacks)
+            {
+                var args = new FeedbackLogArgs
+                {
+                    Code = f.Code,
+                    Text = f.Text,
+                    Parameters = [.. f.Parameters.Where(s => !string.IsNullOrEmpty(s)).Select(sn => (string)sn!)]
+                };
+                await FeedbackLog.Invoke(this, args);
+            }
         }
 
         public async Task Login(string userId, char[] pin, string? customerId=null, string? systemId=null)
@@ -83,7 +112,8 @@ namespace AV.FinTS
             {
                 addSegs.Add(new HKSYN3 { Mode = SynchonizationMode.NEW_CUSTOMER_SYSTEM_ID });
             }
-            var initMsg = await diag.Init(_bpd.Version, 0, addSegs);
+            var initMsg = await diag.Init(Bpd.Version, 0, addSegs);
+            await LogMessage(initMsg);
             foreach (var seg in initMsg.GetAll<HIRMG2>())
             {
                 foreach(var fb in seg.Feedbacks)
@@ -105,8 +135,8 @@ namespace AV.FinTS
                 }
             }
             var allowedProcedures = initMsg.GetAll<HIRMS2>().SelectMany(x => x.Feedbacks).Where(x => x.Code == 3920).First();
-            AvailableAuthenticationMethods = allowedProcedures.Parameters.Where(x => x is not null).Select(x => _bpd.AuthenticationMethods.Where(m => m.SecurityFunction == int.Parse(x!)).First()).ToList();
-            await diag.End([]);
+            AvailableAuthenticationMethods = allowedProcedures.Parameters.Where(x => x is not null).Select(x => Bpd.AuthenticationMethods.Where(m => m.SecurityFunction == int.Parse(x!)).First()).ToList();
+            await LogMessage(await diag.End([]));
 
             if (systemId == null)
             {
@@ -122,7 +152,8 @@ namespace AV.FinTS
             var dialog = new Dialog(_endpoint, _userInfo, new PinTanSecurity(SelectedAuthenticationMethod.SecurityFunction, _pin));
 
             var tan = GenTanRequest(segment: usage);
-            var initMsg = await dialog.Init(_bpd.Version, 0, [tan]);
+            var initMsg = await dialog.Init(Bpd.Version, 0, [tan]);
+            await LogMessage(initMsg);
 
             var errors = initMsg.GetAll<HIRMG2>().SelectMany(g => g.Feedbacks).Where(fb => fb.Code >= 9000).Concat(
                         initMsg.GetAll<HIRMS2>().SelectMany(s => s.Feedbacks).Where(fb => fb.Code >= 9000));
@@ -134,7 +165,7 @@ namespace AV.FinTS
 
             if (initMsg.Segments.Any(seg => seg.Head.IsBpd))
             {
-                _bpd = Bpd.FromMessage(initMsg);
+                Bpd = Bpd.FromMessage(initMsg);
             }
 
             var completedAuthMsg = await ProcessTanResponse(dialog, initMsg);
@@ -145,7 +176,7 @@ namespace AV.FinTS
             }
             if (initMsg.Segments.Any(seg => seg.Head.IsBpd))
             {
-                _bpd = Bpd.FromMessage(initMsg);
+                Bpd = Bpd.FromMessage(initMsg);
             }
 
             return dialog;
@@ -180,7 +211,7 @@ namespace AV.FinTS
                 var tanResp = await _authHandler(SelectedAuthenticationMethod, new TanRequest
                 {
                     Challenge = challenge,
-                    ChallengeHhdUc = followhi.GetPropertyNotNull<byte[]>("ChallengeHddUc"),
+                    ChallengeHhdUc = followhi.GetPropertyNotNull<byte[]>("ChallengeHhdUc"),
                     Reference = hitan.GetPropertyNotNull<string>("Reference"),
                     ValidUpTo = followhi.GetPropertyValue<DateTime>("ValidUpTo"),
                     TanMedium = followhi.GetProperty<string>("Reference")
@@ -189,6 +220,7 @@ namespace AV.FinTS
 
                 var tan = GenTanRequest(process: "S", reference: hitan.GetPropertyNotNull<string>("Reference"), tanFollows: false);
                 message = await dialog.SendMessage([tan]);
+                await LogMessage(message);
                 statusRequests++;
                 var errors = message.GetAll<HIRMG2>().SelectMany(seg => seg.Feedbacks).Concat(message.GetAll<HIRMS2>().Where(seg => seg.Head.SegmentReference == tan.Head.Number).SelectMany(seg => seg.Feedbacks)).Where(fb => fb.Code >= 9000);
                 if (errors.Count() > 0)
@@ -233,7 +265,7 @@ namespace AV.FinTS
                 var tanResp = await _authHandler(SelectedAuthenticationMethod, new TanRequest
                 {
                     Challenge = hitan.GetProperty<string>("Challenge"),
-                    ChallengeHhdUc = hitan.GetPropertyNotNull<byte[]>("ChallengeHddUc"),
+                    ChallengeHhdUc = hitan.GetPropertyNotNull<byte[]>("ChallengeHhdUc"),
                     Reference = hitan.GetPropertyNotNull<string>("Reference"),
                     ValidUpTo = hitan.GetPropertyValue<DateTime>("ValidUpTo"),
                     TanMedium = hitan.GetProperty<string>("Reference")
@@ -243,6 +275,7 @@ namespace AV.FinTS
                 var tan = GenTanRequest(process: "2", reference: hitan.GetPropertyNotNull<string>("Reference"), tanFollows: false);
                 ((PinTanSecurity)dialog.SecurityProvider).Tan = tanResp.Tan;
                 var response = await dialog.SendMessage([tan]);
+                await LogMessage(response);
                 var errors = response.GetAll<HIRMG2>().SelectMany(seg => seg.Feedbacks).Concat(response.GetAll<HIRMS2>().Where(seg => seg.Head.SegmentReference == tan.Head.Number).SelectMany(seg => seg.Feedbacks)).Where(fb => fb.Code >= 9000);
                 if (errors.Count() > 0)
                 {
@@ -303,6 +336,8 @@ namespace AV.FinTS
         public AuthMethod SelectedAuthenticationMethod { get; set; } = null!;
 
         public TanMedium? SelectedTanMedium { get; set; }
+
+        public Bpd Bpd { get; private set; }
 
         private static NullabilityInfoContext nullCtx = new NullabilityInfoContext();
         private ISegment CreateSegment(SegmentId paramHead, object obj, params Type[] segTypes)
@@ -390,17 +425,17 @@ namespace AV.FinTS
 
         private async Task<RawMessage> Send(Dialog dialog, List<ISegment> segments, SepaAccount? account=null)
         {
-            if(!segments.All(seg => _bpd.PinTanInfo.ContainsKey(seg.Head.Name)))
+            if(!segments.All(seg => Bpd.PinTanInfo.ContainsKey(seg.Head.Name)))
             {
-                await dialog.End([]);
+                await LogMessage(await dialog.End([]));
                 throw new OperationNotSupported();
             }
 
             var accountlessSegments = segments.Where(seg => !IsAccountSpecific(seg.Head.Name)).Select(seg => seg.Head.Name).ToList();
             var accountSegments = segments.Where(seg => IsAccountSpecific(seg.Head.Name)).Select(seg  => seg.Head.Name).ToList();
-            var accountTanSegments = accountSegments.Where(seg => _bpd.PinTanInfo[seg]).ToList();
+            var accountTanSegments = accountSegments.Where(seg => Bpd.PinTanInfo[seg]).ToList();
 
-            var tanRequired = _bpd.PinTanInfo.Where(kv => accountlessSegments.Contains(kv.Key)).Any(kv => kv.Value);
+            var tanRequired = Bpd.PinTanInfo.Where(kv => accountlessSegments.Contains(kv.Key)).Any(kv => kv.Value);
 
             var upd = (HIUPD6?)null;
             if (account != null)
@@ -408,21 +443,21 @@ namespace AV.FinTS
                 upd = _upd.GetForAccount(account);
                 if (upd == null)
                 {
-                    await dialog.End([]);
+                    await LogMessage(await dialog.End([]));
                     throw new OperationNotSupported();
                 }
 
                 var ops = upd.AllowedOperations.Where(op => accountTanSegments.Contains(op.Operation)).ToList();
                 if (ops.Any(op => op.NumRequiredSignatures > 1) || accountTanSegments.Distinct().Count() != ops.Count)
                 {
-                    await dialog.End([]);
+                    await LogMessage(await dialog.End([]));
                     throw new OperationNotSupported();
                 }
 
                 tanRequired = tanRequired || ops.Any(op => op.NumRequiredSignatures == 1);
             } else if(accountSegments.Count() > 0)
             {
-                await dialog.End([]);
+                await LogMessage(await dialog.End([]));
                 throw new ArgumentNullException(nameof(accountSegments));
             }
 
@@ -430,6 +465,7 @@ namespace AV.FinTS
             if (tanRequired)
             {
                 respMessage = await dialog.SendMessage([..segments, GenTanRequest(segment: segments[0].Head.Name)]);
+                await LogMessage(respMessage);
                 var interErrors = respMessage.GetAll<HIRMG2>().SelectMany(seg => seg.Feedbacks).Concat(respMessage.GetAll<HIRMS2>().SelectMany(seg => seg.Feedbacks)).Where(fb => fb.Code >= 9000);
                 if (interErrors.Count() > 0)
                 {
@@ -440,6 +476,7 @@ namespace AV.FinTS
             else
             {
                 respMessage = await dialog.SendMessage(segments);
+                await LogMessage(respMessage);
             }
 
             var errors = respMessage.GetAll<HIRMG2>().SelectMany(seg => seg.Feedbacks).Concat(respMessage.GetAll<HIRMS2>().SelectMany(seg => seg.Feedbacks)).Where(fb => fb.Code >= 9000);
@@ -451,9 +488,17 @@ namespace AV.FinTS
             return respMessage;
         }
 
+        public async Task<Upd> RequestUpd()
+        {
+            var diag = await OpenDialog();
+            await LogMessage(await diag.End([]));
+
+            return _upd;
+        }
+
         public async Task<TanMediumResponse> GetTanMedia(TanMediumType type = TanMediumType.All, TanMediumClass mediumClass = TanMediumClass.ALL)
         {
-            var best = _bpd.GetBestParameterRequired(typeof(HITABS4));
+            var best = Bpd.GetBestParameterRequired(typeof(HITABS4));
             var seg = CreateSegment(best.Head, new
             {
                 Type = type,
@@ -470,6 +515,7 @@ namespace AV.FinTS
             }
 
             var respMessage = await Send(diag, [seg]);
+            await LogMessage(await diag.End([]));
 
             var hiseg = respMessage.Get($"{seg.Head.Name[0]}I{seg.Head.Name.Substring(2)}", seg.Head.Version);
             var media = hiseg.GetPropertyNotNull<List<HITAB4.TanMediumElement>>("Media");
@@ -498,7 +544,7 @@ namespace AV.FinTS
 
         public async Task<IReadOnlyCollection<SepaAccount>> GetAccounts()
         {
-            var best = _bpd.GetBestParameterRequired(typeof(HISPAS2), typeof(HISPAS1));
+            var best = Bpd.GetBestParameterRequired(typeof(HISPAS2), typeof(HISPAS1));
 
             var seg = CreateSegment(best.Head, new
             {
@@ -531,7 +577,7 @@ namespace AV.FinTS
 
                 sepa_accounts.Add(sepa);
             }
-            await diag.End([]);
+            await LogMessage(await diag.End([]));
             return sepa_accounts;
         }
 
@@ -548,10 +594,10 @@ namespace AV.FinTS
             {
                 throw new ArgumentException("can't request bookings in the future");
             }
-            var best = _bpd.GetBestParameterRequired(typeof(HIKAZS7), typeof(HIKAZS6), typeof(HIKAZS5), typeof(HIKAZS4));
+            var best = Bpd.GetBestParameterRequired(typeof(HIKAZS7), typeof(HIKAZS6), typeof(HIKAZS5), typeof(HIKAZS4));
             if (best.GetPropertyNotNull<int>("StorageDuration") < (DateTime.Now - from.ToDateTime(TimeOnly.MinValue)).TotalDays)
             {
-                throw new ArgumentException("transactions are only stored for " + best.GetPropertyNotNull<int>("StorageDuration"));
+                throw new ArgumentException("transactions are only stored for " + best.GetPropertyNotNull<int>("StorageDuration") + " days");
             }
 
             var seg = CreateSegment(best.Head, new
@@ -566,7 +612,7 @@ namespace AV.FinTS
 
             var respMessage = await Send(diag, [seg], account);
 
-            await diag.End([]);
+            await LogMessage(await diag.End([]));
 
             var datasets = respMessage.Segments.Where(seg => seg.Head.Name == "HIKAZ").Select(seg => seg.GetPropertyNotNull<byte[]>("BookedTransactions")).Where(b => b.Length > 0).SelectMany(MT940.Parse).ToList();
 
@@ -603,8 +649,8 @@ namespace AV.FinTS
         public async Task GetStatement(SepaAccount account, AccountStatementFormat? format=null, int? number=null, int? year=null)
         {
             ThrowIfNull(account, nameof(account));
-            var best = _bpd.GetBestParameterRequired(typeof(HIEKAS5), typeof(HIEKAS4), typeof(HIEKAS3));
-            var spas = _bpd.GetBestParameterRequired(typeof(HISPAS2), typeof(HISPAS1));
+            var best = Bpd.GetBestParameterRequired(typeof(HIEKAS5), typeof(HIEKAS4), typeof(HIEKAS3));
+            var spas = Bpd.GetBestParameterRequired(typeof(HISPAS2), typeof(HISPAS1));
 
             if ((number != null || year != 0) && !best.GetPropertyNotNull<bool>("NumberAllowed"))
             {
@@ -637,6 +683,24 @@ namespace AV.FinTS
             var respMessage = await Send(diag, [seg], account);
 
             var hiseg = respMessage.Get("HIEKA");
+            await LogMessage(await diag.End([]));
         }
+    }
+
+    public class FeedbackLogArgs
+    {
+        public int Code { get; internal set; }
+
+        public string Text { get; internal set; } = null!;
+
+        public List<string> Parameters { get; internal set; } = null!;
+
+        public bool IsError => Code >= 9000 && Code <= 9999;
+
+        public bool IsWarning => Code >= 3000 && Code <= 3999;
+
+        public bool IsSuccess => Code >= 0 && Code <= 999;
+
+        internal FeedbackLogArgs() { }
     }
 }

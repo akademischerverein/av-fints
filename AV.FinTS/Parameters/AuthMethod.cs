@@ -1,4 +1,5 @@
-﻿using AV.FinTS.Raw.Segments.Auth;
+﻿using AV.FinTS.Raw.Codes;
+using AV.FinTS.Raw.Segments.Auth;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -97,7 +98,7 @@ namespace AV.FinTS.Parameter
                 auth.Tan = new()
                 {
                     Name = param.ReturnValueName,
-                    Format = (int)param.AllowedTanFormat!,
+                    Format = (TanFormat)param.AllowedTanFormat!,
                     MaxLength = (int)param.MaxTanLength!,
                 };
             } else if (spec == Spec.Decoupled)
@@ -132,7 +133,7 @@ namespace AV.FinTS.Parameter
         {
             public string Name { get; internal set; } = null!;
 
-            public int Format { get; internal set; }
+            public TanFormat Format { get; internal set; }
 
             public int MaxLength { get; internal set; }
         }

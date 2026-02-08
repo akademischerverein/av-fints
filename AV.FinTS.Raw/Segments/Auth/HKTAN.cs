@@ -1,4 +1,5 @@
-﻿using AV.FinTS.Raw.Structures;
+﻿using AV.FinTS.Raw.Codes;
+using AV.FinTS.Raw.Structures;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -80,7 +81,7 @@ namespace AV.FinTS.Raw.Segments.Auth
 
         public string? Challenge { get; set; }
 
-        public byte[] ChallengeHddUc { get; set; } = [];
+        public byte[] ChallengeHhdUc { get; set; } = [];
 
         public string? TanMedium { get; set; }
 
@@ -96,7 +97,7 @@ namespace AV.FinTS.Raw.Segments.Auth
             reader.Read();
             seg.Reference = reader.Read();
             seg.Challenge = reader.Read();
-            seg.ChallengeHddUc = reader.ReadBytes();
+            seg.ChallengeHhdUc = reader.ReadBytes();
 
             reader.EnterGroup();
             var d = reader.ReadDate();
@@ -177,7 +178,7 @@ namespace AV.FinTS.Raw.Segments.Auth
 
             public int? MaxTanLength { get; set; }
 
-            public int? AllowedTanFormat { get; set; }
+            public TanFormat? AllowedTanFormat { get; set; }
 
             public string ReturnValueName { get; set; } = null!;
 
@@ -227,7 +228,7 @@ namespace AV.FinTS.Raw.Segments.Auth
                     DkTanVersion = reader.Read(),
                     TwoStepProcedureName = reader.Read()!,
                     MaxTanLength = reader.ReadInt(),
-                    AllowedTanFormat = reader.ReadInt(),
+                    AllowedTanFormat = (TanFormat?)reader.ReadInt(),
                     ReturnValueName = reader.Read()!,
                     MaxReturnValueLength = (int)reader.ReadInt()!,
                     MultipleUseTanAllowed = (bool)reader.ReadBool()!,
@@ -248,6 +249,11 @@ namespace AV.FinTS.Raw.Segments.Auth
                     AutomaticStatusRequestsAllowed = reader.ReadBool(),
                 };
                 reader.LeaveGroup();
+
+                if (param.AllowedTanFormat != null && !Enum.IsDefined((TanFormat)param.AllowedTanFormat))
+                {
+                    throw new InvalidDataException("invalid tan format option set: " + (int)param.AllowedTanFormat);
+                }
 
                 return param;
             }
@@ -335,7 +341,7 @@ namespace AV.FinTS.Raw.Segments.Auth
 
         public string? Challenge { get; set; }
 
-        public byte[] ChallengeHddUc { get; set; } = [];
+        public byte[] ChallengeHhdUc { get; set; } = [];
 
         public string? TanMedium { get; set; }
 
@@ -351,7 +357,7 @@ namespace AV.FinTS.Raw.Segments.Auth
             reader.Read();
             seg.Reference = reader.Read();
             seg.Challenge = reader.Read();
-            seg.ChallengeHddUc = reader.ReadBytes();
+            seg.ChallengeHhdUc = reader.ReadBytes();
 
             reader.EnterGroup();
             var d = reader.ReadDate();
@@ -432,7 +438,7 @@ namespace AV.FinTS.Raw.Segments.Auth
 
             public int MaxTanLength { get; set; }
 
-            public int AllowedTanFormat { get; set; }
+            public TanFormat AllowedTanFormat { get; set; }
 
             public string ReturnValueName { get; set; } = null!;
 
@@ -472,7 +478,7 @@ namespace AV.FinTS.Raw.Segments.Auth
                     ZkaTanVersion = reader.Read(),
                     TwoStepProcedureName = reader.Read()!,
                     MaxTanLength = (int)reader.ReadInt()!,
-                    AllowedTanFormat = (int)reader.ReadInt()!,
+                    AllowedTanFormat = (TanFormat)reader.ReadInt()!,
                     ReturnValueName = reader.Read()!,
                     MaxReturnValueLength = (int)reader.ReadInt()!,
                     MultipleUseTanAllowed = (bool)reader.ReadBool()!,
@@ -488,6 +494,11 @@ namespace AV.FinTS.Raw.Segments.Auth
                     CountActiveTanMedia = reader.ReadInt()
                 };
                 reader.LeaveGroup();
+
+                if (!Enum.IsDefined(param.AllowedTanFormat))
+                {
+                    throw new InvalidDataException("invalid tan format option set: " + (int)param.AllowedTanFormat);
+                }
 
                 return param;
             }

@@ -1,4 +1,5 @@
 ﻿using AV.FinTS.Raw.Codes;
+using AV.FinTS.Raw.Segments.ParameterData;
 using AV.FinTS.Raw.Structures;
 using System;
 using System.Collections.Generic;
@@ -12,7 +13,7 @@ namespace AV.FinTS.Models
     {
         public string Iban { get; private set; } = null!;
 
-        public string Bic { get; private set; } = null!;
+        public string? Bic { get; private set; }
 
         public string? AccountNumber { get; private set; }
 
@@ -44,6 +45,21 @@ namespace AV.FinTS.Models
                 cc = acc.BankInfo.CountryCode;
                 NationalSet = true;
             }
+        }
+
+        internal SepaAccount(HIUPD6 upd)
+        {
+            if (upd.Account == null || upd.Iban == null) { throw new ArgumentNullException(); }
+            AccountNumber = upd.Account.AccountNumber;
+            SubAccountNumber = upd.Account.SubAccountNumber;
+            Blz = upd.Account.BankInfo.BankId;
+            cc = upd.Account.BankInfo.CountryCode;
+            NationalSet = true;
+
+            Iban = upd.Iban;
+            AccountHolder = upd.AccountHolder;
+            AccountProductName = upd.AccountProductName;
+            Currency = upd.Currency;
         }
 
         private SepaAccount() { }
